@@ -59,7 +59,7 @@ replaceOnce(
 replaceOnce(
   'billing badge on agenda chip',
   "><strong>{item.status?.name || 'Atendimento'}</strong>{item.client_name_manual && <span>{item.client_name_manual}</span>}",
-  "><span className={`billing-badge billing-${item.billing_status}`}>{billingShort(item.billing_status)}</span><strong>{item.status?.name || 'Atendimento'}</strong>{item.client_name_manual && <span className='chip-client'>{item.client_name_manual}</span>}",
+  "><span className={`billing-badge billing-${item.billing_status}`}>{billingLabel(item.billing_status)}</span><strong>{item.status?.name || 'Atendimento'}</strong>{item.client_name_manual && <span className='chip-client'>{item.client_name_manual}</span>}",
 );
 
 replaceOnce(
