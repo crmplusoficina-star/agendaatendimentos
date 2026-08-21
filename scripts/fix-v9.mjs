@@ -105,7 +105,7 @@ const equipmentSearch = `  async function searchEquipment() {
     const merged = new Map<string, EquipmentRow>();
     for (const item of (careResponse.data || []) as any[]) merged.set(item.serial, { ...item });
     for (const item of (g4Response.data || []) as any[]) {
-      const previous = merged.get(item.serial) || { serial: item.serial, client_name: null, city: null };
+      const previous: EquipmentRow = merged.get(item.serial) || { serial: item.serial, client_name: null, city: null, state: null };
       merged.set(item.serial, { ...previous, serial: item.serial, client_name: item.client_name || previous.client_name, city: item.contact_city || item.service_city || previous.city, state: item.state || previous.state, g4_os_type: item.last_os_type, g4_operation_type: item.last_operation_type, g4_last_service_at: item.last_service_at, g4_contact_name: item.contact_name, g4_contact_email: item.contact_email });
     }
     setRows([...merged.values()]); setLoading(false);
