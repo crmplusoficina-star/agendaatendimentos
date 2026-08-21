@@ -1,0 +1,107 @@
+import fs from 'node:fs';
+
+const appPath = new URL('../src/AppNoAuthV3.tsx', import.meta.url);
+let source = fs.readFileSync(appPath, 'utf8');
+const startMarker = 'function WeeklySheet(';
+const endMarker = 'function PeriodOverview(';
+const start = source.indexOf(startMarker);
+const end = source.indexOf(endMarker, start + startMarker.length);
+if (start < 0 || end < 0) throw new Error('fix-v5: WeeklySheet não encontrado');
+
+const weeklySheet = `function WeeklySheet({ weekDays, technicians, appointments, loading, canEdit, showBranch, onOpenNew, onOpenEdit, onCopy, onBilling }: { weekDays: Date[]; technicians: TechnicianExt[]; appointments: AppointmentExt[]; loading: boolean; canEdit: boolean; showBranch: boolean; onOpenNew: (d: string, t: string) => void; onOpenEdit: (item: AppointmentExt) => void; onCopy: (item: AppointmentExt, date: string, technicianId: string) => void; onBilling: (item: AppointmentExt, value: string) => void }) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [targetKey, setTargetKey] = useState<string | null>(null);
+
+  return (
+    <div className='sheet-wrap'>
+      <div className='sheet-grid sheet-head'>
+        <div className='tech-head'>Técnico</div>
+        {weekDays.map((day) => (
+          <div key={isoDate(day)}><strong>{weekday.format(day).replace('.', '')}</strong><span>{shortDate.format(day)}</span></div>
+        ))}
+      </div>
+      {loading ? (
+        <div className='sheet-loading'>Carregando agenda...</div>
+      ) : technicians.length === 0 ? (
+        <Empty text='Nenhum técnico cadastrado nesta filial.' />
+      ) : technicians.map((tech) => (
+        <div className='sheet-grid sheet-row' key={tech.id}>
+          <div className='tech-name'>
+            <strong>{tech.name}</strong>
+            {showBranch && tech.branch?.name && <span className='branch-mini'>{tech.branch.name}</span>}
+            {tech.source === 'adhoc' && <span>adicional</span>}
+          </div>
+          {weekDays.map((day) => {
+            const date = isoDate(day);
+            const cellKey = tech.id + '-' + date;
+            const items = appointments.filter((item) => item.technician_id === tech.id && item.appointment_date === date);
+            return (
+              <div
+                className={'sheet-cell ' + (canEdit ? 'clickable ' : '') + (targetKey === cellKey ? 'drag-target' : '')}
+                key={date}
+                onClick={() => items.length === 0 && onOpenNew(date, tech.id)}
+                onDragOver={(event) => { if (!canEdit || !draggingId) return; event.preventDefault(); setTargetKey(cellKey); }}
+                onDragLeave={() => setTargetKey((current) => current === cellKey ? null : current)}
+                onDrop={(event) => {
+                  if (!canEdit) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const id = event.dataTransfer.getData('text/appointment-id') || draggingId;
+                  const item = appointments.find((entry) => entry.id === id);
+                  setTargetKey(null);
+                  setDraggingId(null);
+                  if (item) onCopy(item, date, tech.id);
+                }}
+              >
+                {items.length === 0 && canEdit && <span className='cell-plus'>+</span>}
+                {items.map((item) => (
+                  <div
+                    key={item.id}
+                    role='button'
+                    tabIndex={0}
+                    draggable={canEdit}
+                    className='appointment-chip appointment-chip-v5'
+                    onDragStart={(event) => {
+                      setDraggingId(item.id);
+                      event.dataTransfer.effectAllowed = 'copy';
+                      event.dataTransfer.setData('text/appointment-id', item.id);
+                    }}
+                    onDragEnd={() => { setDraggingId(null); setTargetKey(null); }}
+                    onClick={(event) => { event.stopPropagation(); if (canEdit) onOpenEdit(item); }}
+                    onKeyDown={(event) => { if (event.key === 'Enter' && canEdit) onOpenEdit(item); }}
+                    style={{ background: item.status?.color_hex || '#64748b', color: item.status?.text_color || '#fff', cursor: canEdit ? 'pointer' : 'default' }}
+                  >
+                    <select
+                      className='billing-inline-select'
+                      disabled={!canEdit}
+                      value={item.billing_status}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => { event.stopPropagation(); onBilling(item, event.target.value); }}
+                    >
+                      <option value='nao_precificado'>Não precificado</option>
+                      <option value='precificado'>Precificado</option>
+                      <option value='aguardando_faturamento'>Aguardando faturamento</option>
+                      <option value='faturado'>Faturado</option>
+                      <option value='perdido'>Débito interno</option>
+                    </select>
+                    <strong>{item.status?.name || 'Atendimento'}</strong>
+                    {item.client_name_manual && <span className='chip-client'>{item.client_name_manual}</span>}
+                    {item.service_city && <span className='chip-city'>{item.service_city}</span>}
+                    {Number(item.amount || 0) > 0 && <span>{brl.format(Number(item.amount))}</span>}
+                    {item.caretrack_status_snapshot && <i className='chip-caretrack' style={{ background: caretrackColor(item.caretrack_status_snapshot) }} />}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+`;
+
+source = source.slice(0, start) + weeklySheet + source.slice(end);
+fs.writeFileSync(appPath, source);
+console.log('fix-v5 aplicado');
