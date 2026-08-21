@@ -5,6 +5,7 @@ import './noauth.css';
 import './period.css';
 import './quick-context.css';
 import './operations.css';
+import './ai-copilot.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
