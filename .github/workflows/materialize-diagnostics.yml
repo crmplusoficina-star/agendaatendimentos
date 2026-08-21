@@ -1,7 +1,7 @@
 name: Materialize patch diagnostics
 on:
   push:
-    branches: [main]
+    branches: [main, feature/ai-copilot-agenda]
 permissions:
   contents: write
 jobs:
