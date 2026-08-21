@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Check, Eye, Lightbulb, ThumbsUp, X } from 'lucide-react';
 import { supabase } from './lib/supabase';
+import './ai-copilot.css';
 
 type Insight = {
   id: string;
@@ -31,7 +32,13 @@ export function AICopilotPanel({ profileId, branchIds }: Props) {
     setItems((data || []) as Insight[]);
   }, [branchIds.join('|')]);
 
-  useEffect(() => { load(); const timer = window.setInterval(load, 45000); return () => window.clearInterval(timer); }, [load]);
+  useEffect(() => {
+    load();
+    const timer = window.setInterval(load, 45000);
+    const refresh = () => load();
+    window.addEventListener('agenda-ai-refresh', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('agenda-ai-refresh', refresh); };
+  }, [load]);
 
   async function feedback(id: string, status: 'viewed' | 'ignored' | 'useful' | 'converted') {
     setBusy(id);
@@ -59,8 +66,11 @@ export function AppointmentInsight({ appointmentId }: { appointmentId?: string }
   useEffect(() => {
     let active = true;
     if (!appointmentId) { setItem(null); return; }
-    supabase.from('ai_insights').select('id,appointment_id,insight_type,priority,presentation_level,title,message,status,created_at').eq('appointment_id', appointmentId).in('status', ['new', 'viewed', 'useful']).gte('presentation_level', 3).order('created_at', { ascending: false }).limit(1).maybeSingle().then(({ data }) => { if (active) setItem((data || null) as Insight | null); });
-    return () => { active = false; };
+    const load = () => supabase.from('ai_insights').select('id,appointment_id,insight_type,priority,presentation_level,title,message,status,created_at').eq('appointment_id', appointmentId).in('status', ['new', 'viewed', 'useful']).gte('presentation_level', 3).order('created_at', { ascending: false }).limit(1).maybeSingle().then(({ data }) => { if (active) setItem((data || null) as Insight | null); });
+    load();
+    const refresh = () => load();
+    window.addEventListener('agenda-ai-refresh', refresh);
+    return () => { active = false; window.removeEventListener('agenda-ai-refresh', refresh); };
   }, [appointmentId]);
   if (!item) return null;
   return <div className='appointment-ai-card'><span>{iconFor(item.insight_type)}</span><div><strong>{item.title}</strong><p>{item.message}</p></div></div>;
