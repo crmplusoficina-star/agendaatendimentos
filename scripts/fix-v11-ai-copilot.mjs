@@ -3,7 +3,7 @@ import fs from 'node:fs';
 const appPath = new URL('../src/AppNoAuthV3.tsx', import.meta.url);
 let s = fs.readFileSync(appPath, 'utf8');
 const rep = (label, before, after) => { if (s.includes(after)) return; if (!s.includes(before)) throw new Error(`fix-v11: ${label}`); s = s.replace(before, after); };
-const rex = (label, regex, after) => { if (s.includes(after.slice(0, Math.min(after.length, 100)))) return; if (!regex.test(s)) throw new Error(`fix-v11 regex: ${label}`); regex.lastIndex = 0; s = s.replace(regex, after); };
+const rex = (label, regex, after) => { if (s.includes(after)) return; if (!regex.test(s)) throw new Error(`fix-v11 regex: ${label}`); regex.lastIndex = 0; s = s.replace(regex, after); };
 
 rep('import ai', "import { ContactUpdatesPanel } from './ContactUpdatesPanel';", "import { ContactUpdatesPanel } from './ContactUpdatesPanel';\nimport { AICopilotPanel, AppointmentInsight } from './AICopilotPanel';");
 rep('appointment fields', "  service_city: string | null;\n  status_id: string;", "  service_city: string | null;\n  service_reason: string | null;\n  reported_hourmeter: number | null;\n  status_id: string;");
