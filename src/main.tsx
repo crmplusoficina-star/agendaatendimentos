@@ -6,6 +6,7 @@ import './period.css';
 import './quick-context.css';
 import './operations.css';
 import './enhancements.css';
+import './map-v2.css';
 import './contact-updates.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
