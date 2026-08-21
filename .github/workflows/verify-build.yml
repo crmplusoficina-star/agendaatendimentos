@@ -14,5 +14,5 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: node scripts/patch-v3.mjs
+      - run: node scripts/patch-v4.mjs
       - run: npx tsc -b --pretty false
