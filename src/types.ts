@@ -11,6 +11,10 @@ export type Branch = {
   id: string;
   name: string;
   slug: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
 };
 
 export type Technician = {
