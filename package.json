@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/patch-v3.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/patch-v3.mjs",
+    "prebuild": "node scripts/patch-v3.mjs || true",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
