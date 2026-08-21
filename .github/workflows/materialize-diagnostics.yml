@@ -1,0 +1,30 @@
+name: Materialize patch diagnostics
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply patch
+        run: node scripts/patch-v3.mjs > patch-log.txt 2>&1 || true
+      - name: Compile diagnostics
+        run: npx tsc -b --pretty false > build-errors.txt 2>&1 || true
+      - name: Commit diagnostics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppNoAuthV3.tsx patch-log.txt build-errors.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: materialize agenda patch diagnostics"
+            git push
+          fi
