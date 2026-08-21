@@ -1,7 +1,9 @@
 name: Verify build
 on:
   push:
-    branches: [main, feat/agenda-ux-mapa-filtros]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   verify:
