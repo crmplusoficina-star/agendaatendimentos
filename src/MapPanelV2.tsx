@@ -25,8 +25,6 @@ function isoDate(date: Date) { return `${date.getFullYear()}-${String(date.getMo
 function addDays(date: Date, days: number) { const next = new Date(date); next.setDate(next.getDate() + days); return next; }
 function normalize(value?: string | null) { return (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
 
-// Fallback permanente para evitar que filiais desapareçam quando o serviço público de geocodificação limita requisições.
-// O popup continua exibindo o endereço real cadastrado no Supabase.
 const BRANCH_FALLBACK_COORDS: Record<string, { lat: number; lng: number }> = {
   balsas: { lat: -7.5321, lng: -46.0372 },
   imperatriz: { lat: -5.5264, lng: -47.4917 },
@@ -122,8 +120,6 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
         `${branch.name}, Brasil`,
       ].filter(Boolean) as string[];
 
-      // Primeiro usa cache de geocodificação, se já existir. Se a consulta externa falhar,
-      // cai imediatamente no ponto local para garantir o marcador.
       for (const candidate of addressCandidates) {
         const cacheKey = `agenda_geo_v3_${candidate.toLowerCase()}`;
         const cached = localStorage.getItem(cacheKey);
@@ -153,14 +149,12 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
 
         const points: any[] = [];
 
-        // Todas as filiais são resolvidas primeiro e sempre recebem marcador via fallback local.
         for (const branch of visibleBranches) {
           if (cancelled) return;
           const point = await resolveBranchPoint(branch);
           if (point) points.push({ ...point, kind: 'branch', branch });
         }
 
-        // Cidades de clientes são complementares; falha nelas não afeta os marcadores das filiais.
         const uniqueCities = [...new Set(upcoming.map((item) => item.service_city).filter(Boolean) as string[])].slice(0, 20);
         for (const city of uniqueCities) {
           if (cancelled) return;
@@ -184,8 +178,15 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
             bounds.push([point.lat, point.lng]);
           } else {
             const related = upcoming.filter((item) => item.service_city === point.city);
-            const icon = L.divIcon({ className: 'agenda-map-pin agenda-map-pin-client', html: `<span>${related.length}</span>`, iconSize: [32, 32], iconAnchor: [16, 16] });
-            const popup = `<strong>${point.city}</strong><br/>${related.slice(0, 8).map((item) => `${shortDate.format(parseIso(item.appointment_date))} · ${item.technician?.name || 'Técnico'} · ${item.client_name_manual || 'Cliente'}`).join('<br/>')}`;
+            const primary = related[0];
+            const markerColor = primary?.status?.color_hex || '#64748b';
+            const icon = L.divIcon({
+              className: 'agenda-map-pin agenda-map-pin-client',
+              html: `<span style="background:${markerColor}">${related.length}</span>`,
+              iconSize: [32, 32],
+              iconAnchor: [16, 16],
+            });
+            const popup = `<strong>${point.city}</strong><br/>${related.slice(0, 8).map((item) => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${item.status?.color_hex || '#64748b'};margin-right:6px"></span>${shortDate.format(parseIso(item.appointment_date))} · ${item.status?.name || 'Atendimento'} · ${item.technician?.name || 'Técnico'} · ${item.client_name_manual || 'Cliente'}`).join('<br/>')}`;
             L.marker([point.lat, point.lng], { icon }).addTo(map).bindPopup(popup);
             bounds.push([point.lat, point.lng]);
           }
@@ -203,7 +204,7 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
 
   return <section className='clean-panel map-dashboard-panel'>
     <div className='panel-heading map-heading'>
-      <div><h2><MapPinned /> Mapa de atendimentos · {scopeLabel}</h2><p>Todas as filiais do filtro aparecem sempre; o endereço do cadastro é exibido no marcador.</p></div>
+      <div><h2><MapPinned /> Mapa de atendimentos · {scopeLabel}</h2><p>Todas as filiais do filtro aparecem sempre; cada cidade usa a cor do status do atendimento.</p></div>
       <div className='map-controls'>
         <select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)}><option value='todas'>Todas as filiais</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
         <select value={daysAhead} onChange={(event) => setDaysAhead(event.target.value)}><option value='7'>Próximos 7 dias</option><option value='15'>Próximos 15 dias</option><option value='30'>Próximos 30 dias</option><option value='60'>Próximos 60 dias</option></select>
