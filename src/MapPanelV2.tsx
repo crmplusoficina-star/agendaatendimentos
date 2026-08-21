@@ -23,6 +23,25 @@ const shortDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-d
 function parseIso(value: string) { return new Date(`${value}T12:00:00`); }
 function isoDate(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 function addDays(date: Date, days: number) { const next = new Date(date); next.setDate(next.getDate() + days); return next; }
+function normalize(value?: string | null) { return (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
+
+// Fallback permanente para evitar que filiais desapareçam quando o serviço público de geocodificação limita requisições.
+// O popup continua exibindo o endereço real cadastrado no Supabase.
+const BRANCH_FALLBACK_COORDS: Record<string, { lat: number; lng: number }> = {
+  balsas: { lat: -7.5321, lng: -46.0372 },
+  imperatriz: { lat: -5.5264, lng: -47.4917 },
+  itaitinga: { lat: -3.9694, lng: -38.5298 },
+  manaus: { lat: -3.0550, lng: -60.0157 },
+  maraba: { lat: -5.3811, lng: -49.1323 },
+  marituba: { lat: -1.3618, lng: -48.2506 },
+  miritituba: { lat: -4.2762, lng: -55.9840 },
+  'sao luis': { lat: -2.6476, lng: -44.2480 },
+  teresina: { lat: -5.1705, lng: -42.7942 },
+};
+
+function fallbackForBranch(branch: Branch) {
+  return BRANCH_FALLBACK_COORDS[normalize(branch.name)] || BRANCH_FALLBACK_COORDS[normalize(branch.city)] || null;
+}
 
 export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
   const mapRef = useRef<HTMLDivElement | null>(null);
@@ -76,18 +95,49 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
     }
 
     async function geocode(label: string, queryText: string) {
-      const key = `agenda_geo_v2_${queryText.toLowerCase()}`;
+      const key = `agenda_geo_v3_${queryText.toLowerCase()}`;
       const cached = localStorage.getItem(key);
       if (cached) {
-        try { return { label, ...JSON.parse(cached) }; } catch { /* ignore cache inválido */ }
+        try { return { label, ...JSON.parse(cached) }; } catch { /* cache inválido */ }
       }
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(queryText)}`);
-      if (!response.ok) return null;
-      const data = await response.json();
-      if (!data?.[0]) return null;
-      const point = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
-      localStorage.setItem(key, JSON.stringify(point));
-      return { label, ...point };
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(queryText)}`);
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (!data?.[0]) return null;
+        const point = { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+        localStorage.setItem(key, JSON.stringify(point));
+        return { label, ...point };
+      } catch {
+        return null;
+      }
+    }
+
+    async function resolveBranchPoint(branch: Branch) {
+      const fallback = fallbackForBranch(branch);
+      const addressCandidates = [
+        branch.address,
+        branch.postal_code ? `${branch.postal_code}, Brasil` : null,
+        [branch.city, branch.state, 'Brasil'].filter(Boolean).join(', '),
+        `${branch.name}, Brasil`,
+      ].filter(Boolean) as string[];
+
+      // Primeiro usa cache de geocodificação, se já existir. Se a consulta externa falhar,
+      // cai imediatamente no ponto local para garantir o marcador.
+      for (const candidate of addressCandidates) {
+        const cacheKey = `agenda_geo_v3_${candidate.toLowerCase()}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          try { return { label: `Tracbel · ${branch.name}`, ...JSON.parse(cached) }; } catch { /* segue */ }
+        }
+      }
+      if (fallback) return { label: `Tracbel · ${branch.name}`, ...fallback, fallback: true };
+
+      for (const candidate of addressCandidates) {
+        const point = await geocode(`Tracbel · ${branch.name}`, candidate);
+        if (point) return point;
+      }
+      return null;
     }
 
     async function buildMap() {
@@ -102,14 +152,15 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap' }).addTo(map);
 
         const points: any[] = [];
+
+        // Todas as filiais são resolvidas primeiro e sempre recebem marcador via fallback local.
         for (const branch of visibleBranches) {
           if (cancelled) return;
-          const addressQuery = branch.address || [branch.city, branch.state, 'Brasil'].filter(Boolean).join(', ');
-          if (!addressQuery) continue;
-          const point = await geocode(`Tracbel · ${branch.name}`, addressQuery);
+          const point = await resolveBranchPoint(branch);
           if (point) points.push({ ...point, kind: 'branch', branch });
         }
 
+        // Cidades de clientes são complementares; falha nelas não afeta os marcadores das filiais.
         const uniqueCities = [...new Set(upcoming.map((item) => item.service_city).filter(Boolean) as string[])].slice(0, 20);
         for (const city of uniqueCities) {
           if (cancelled) return;
@@ -152,7 +203,7 @@ export function DashboardMapV2({ appointments, branches, scopeLabel }: Props) {
 
   return <section className='clean-panel map-dashboard-panel'>
     <div className='panel-heading map-heading'>
-      <div><h2><MapPinned /> Mapa de atendimentos · {scopeLabel}</h2><p>As filiais aparecem sempre pelo endereço cadastrado, mesmo sem agenda futura.</p></div>
+      <div><h2><MapPinned /> Mapa de atendimentos · {scopeLabel}</h2><p>Todas as filiais do filtro aparecem sempre; o endereço do cadastro é exibido no marcador.</p></div>
       <div className='map-controls'>
         <select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)}><option value='todas'>Todas as filiais</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
         <select value={daysAhead} onChange={(event) => setDaysAhead(event.target.value)}><option value='7'>Próximos 7 dias</option><option value='15'>Próximos 15 dias</option><option value='30'>Próximos 30 dias</option><option value='60'>Próximos 60 dias</option></select>
